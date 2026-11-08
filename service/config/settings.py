@@ -15,9 +15,15 @@ class DeviceConfig(BaseModel):
     virsh_xml_path: str = Field(default="", description="Optional XML path for virsh attach-device")
 
 def load_config() -> DeviceConfig:
-    if os.path.exists(CONFIG_FILE):
+    # If CONFIG_FILE is accidentally mounted as a directory by Docker (e.g. when host file was missing)
+    if os.path.isdir(CONFIG_FILE):
+        actual_file = os.path.join(CONFIG_FILE, "config.json")
+    else:
+        actual_file = CONFIG_FILE
+
+    if os.path.exists(actual_file) and not os.path.isdir(actual_file):
         try:
-            with open(CONFIG_FILE, "r") as f:
+            with open(actual_file, "r") as f:
                 data = json.load(f)
                 return DeviceConfig(**data)
         except Exception:
@@ -27,6 +33,11 @@ def load_config() -> DeviceConfig:
     return cfg
 
 def save_config(cfg: DeviceConfig):
-    with open(CONFIG_FILE, "w") as f:
+    if os.path.isdir(CONFIG_FILE):
+        actual_file = os.path.join(CONFIG_FILE, "config.json")
+    else:
+        actual_file = CONFIG_FILE
+
+    with open(actual_file, "w") as f:
         f.write(cfg.model_dump_json(indent=2))
 

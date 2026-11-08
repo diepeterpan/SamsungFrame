@@ -25,6 +25,9 @@ RUN playwright install --with-deps chromium \
 # Copy application source code
 COPY service/ /app/service/
 
+# Ensure default config.json file exists so Docker volume mounts don't create a directory
+RUN touch /app/config.json
+
 EXPOSE 8080
 
 CMD ["python", "-m", "uvicorn", "service.main:app", "--host", "0.0.0.0", "--port", "8080"]
