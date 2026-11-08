@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Samsung Photo Frame Control Center</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* Samsung Brand Tokens */
+    :root {
+      --samsung-blue: #034EA2;
+      --samsung-navy: #002F6C;
+      --samsung-white: #FFFFFF;
+      --samsung-black: #000000;
+      --samsung-gray-bg: #F4F6F9;
+      --samsung-gray-border: #DDE2E8;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #FAFAFA;
+      color: #111827;
+      margin: 0;
+      padding: 0;
+    }
+    .font-samsung {
+      font-family: 'Space Grotesk', -apple-system, sans-serif;
+      letter-spacing: -0.02em;
+    }
+    /* Sharp geometry styling */
+    .sharp-box {
+      border-radius: 0px;
+    }
+    .btn-samsung-primary {
+      background-color: var(--samsung-blue);
+      color: #FFFFFF;
+      border-radius: 0px;
+      font-weight: 600;
+      transition: background-color 0.15s ease-in-out;
+    }
+    .btn-samsung-primary:hover {
+      background-color: var(--samsung-navy);
+    }
+    .btn-samsung-outline {
+      border: 1px solid var(--samsung-blue);
+      color: var(--samsung-blue);
+      background: #FFFFFF;
+      border-radius: 0px;
+      font-weight: 600;
+      transition: all 0.15s ease-in-out;
+    }
+    .btn-samsung-outline:hover {
+      background: var(--samsung-blue);
+      color: #FFFFFF;
+    }
+    .frame-bezel {
+      background: #000000;
+      padding: 14px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.18);
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+  <!-- Top Samsung Header Bar -->
+  <header class="bg-white border-b border-[#DDE2E8] sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-4">
+        <!-- Samsung Brand Logo Text -->
+        <span class="font-samsung text-2xl font-extrabold tracking-tighter text-[#034EA2]">SAMSUNG</span>
+        <div class="h-5 w-[1px] bg-gray-300"></div>
+        <span class="text-sm font-semibold tracking-wider uppercase text-gray-700">Photo Frame Manager</span>
+      </div>
+
+      <div class="flex items-center space-x-4">
+        <div id="connBadge" class="flex items-center space-x-2 text-xs font-semibold px-3 py-1.5 sharp-box border border-gray-300 bg-gray-50 text-gray-600">
+          <span class="w-2.5 h-2.5 rounded-full bg-gray-400" id="connDot"></span>
+          <span id="connText">CONNECTING...</span>
+        </div>
+        <button onclick="triggerImmediateRender()" class="btn-samsung-primary text-xs px-4 py-2 uppercase tracking-wider">
+          Sync Now
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Dashboard Content -->
+  <main class="max-w-7xl mx-auto px-6 py-8 w-full flex-grow">
+    
+    <!-- Self-Healing / State Alert Wizard (Hidden when healthy) -->
+    <div id="recoveryBanner" class="hidden mb-6 p-5 border-l-4 border-red-600 bg-white border border-gray-200 shadow-sm sharp-box">
+      <div class="flex items-start justify-between">
+        <div class="flex items-start space-x-3">
+          <span class="text-2xl font-bold text-red-600">!</span>
+          <div>
+            <h3 class="font-samsung font-bold text-base text-gray-900 uppercase tracking-tight">Frame Attention Required: <span id="recoveryTitle">Device in Storage Mode</span></h3>
+            <p id="recoveryDesc" class="text-xs text-gray-600 mt-1 max-w-2xl leading-relaxed">
+              The connected frame is in USB Storage Mode or awaiting selection. The automated self-healing supervisor is commanding the frame to switch into Mini-Display mode. If it remains stuck, select <strong>"Mini Monitor"</strong> on the device menu.
+            </p>
+          </div>
+        </div>
+        <div class="flex space-x-2">
+          <button onclick="requestHealingSwitch()" class="btn-samsung-primary text-xs px-4 py-2 uppercase tracking-wide">
+            Force Mode Switch
+          </button>
+          <button onclick="requestDeviceReset()" class="btn-samsung-outline text-xs px-3 py-2 uppercase tracking-wide">
+            Reset USB
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2-Column Grid: Left Controls & Status, Right Live Preview -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      
+      <!-- Left Column (5 Cols) -->
+      <div class="lg:col-span-5 space-y-6">
+        
+        <!-- Hardware State Card -->
+        <div class="bg-white border border-[#DDE2E8] p-6 sharp-box shadow-sm">
+          <div class="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+            <h2 class="font-samsung text-xs font-bold uppercase tracking-widest text-[#002F6C]">Hardware Status</h2>
+            <span id="badgeDeviceState" class="text-[11px] font-bold px-2.5 py-1 sharp-box uppercase tracking-wider bg-gray-100 text-gray-600">DISCONNECTED</span>
+          </div>
+
+          <dl class="grid grid-cols-2 gap-y-3 text-xs">
+            <dt class="text-gray-500 uppercase tracking-wider">Detected Model</dt>
+            <dd id="statModel" class="font-semibold text-gray-900 text-right">-</dd>
+
+            <dt class="text-gray-500 uppercase tracking-wider">Active Resolution</dt>
+            <dd id="statResolution" class="font-semibold text-gray-900 text-right">800 x 480</dd>
+
+            <dt class="text-gray-500 uppercase tracking-wider">Frames Delivered</dt>
+            <dd id="statFramesSent" class="font-semibold text-gray-900 text-right">0</dd>
+
+            <dt class="text-gray-500 uppercase tracking-wider">Auto Self-Healing</dt>
+            <dd id="statSelfHeal" class="font-semibold text-emerald-600 text-right">ACTIVE</dd>
+          </dl>
+
+          <div class="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between">
+            <button onclick="requestDeviceReset()" class="btn-samsung-outline text-xs px-3 py-2 uppercase tracking-wider">
+              Soft Reset Device
+            </button>
+            <button onclick="triggerImmediateRender()" class="btn-samsung-primary text-xs px-4 py-2 uppercase tracking-wider">
+              Capture & Send
+            </button>
+          </div>
+        </div>
+
+        <!-- Configuration Settings Card -->
+        <div class="bg-white border border-[#DDE2E8] p-6 sharp-box shadow-sm">
+          <h2 class="font-samsung text-xs font-bold uppercase tracking-widest text-[#002F6C] border-b border-gray-100 pb-3 mb-4">Display Configuration</h2>
+          
+          <form id="configForm" onsubmit="saveConfiguration(event)" class="space-y-4 text-xs">
+            <div>
+              <label class="block font-semibold uppercase tracking-wider text-gray-700 mb-1">Target Webpage / Dashboard URL</label>
+              <input id="cfgUrl" type="url" required class="w-full border border-gray-300 p-2.5 sharp-box focus:border-[#034EA2] focus:outline-none" placeholder="https://example.com/dashboard">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block font-semibold uppercase tracking-wider text-gray-700 mb-1">Target Model</label>
+                <select id="cfgModel" class="w-full border border-gray-300 p-2.5 sharp-box focus:border-[#034EA2] focus:outline-none bg-white">
+                  <option value="AUTO">AUTO (Detect USB)</option>
+                  <option value="SPF-87H">SPF-87H (800x480)</option>
+                  <option value="SPF-107H">SPF-107H (1024x600)</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block font-semibold uppercase tracking-wider text-gray-700 mb-1">Refresh Rate (Sec)</label>
+                <input id="cfgInterval" type="number" min="3" max="3600" class="w-full border border-gray-300 p-2.5 sharp-box focus:border-[#034EA2] focus:outline-none" value="15">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block font-semibold uppercase tracking-wider text-gray-700 mb-1">Scaling Mode</label>
+                <select id="cfgScaling" class="w-full border border-gray-300 p-2.5 sharp-box focus:border-[#034EA2] focus:outline-none bg-white">
+                  <option value="fit_letterbox">Fit & Letterbox (Aspect)</option>
+                  <option value="crop_center">Cover & Crop Center</option>
+                  <option value="stretch">Exact Stretch</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block font-semibold uppercase tracking-wider text-gray-700 mb-1">JPEG Quality</label>
+                <input id="cfgQuality" type="number" min="20" max="100" class="w-full border border-gray-300 p-2.5 sharp-box focus:border-[#034EA2] focus:outline-none" value="85">
+              </div>
+            </div>
+
+            <div class="pt-2 flex items-center space-x-2">
+              <input id="cfgAutoHeal" type="checkbox" checked class="w-4 h-4 text-[#034EA2] border-gray-300 rounded-none focus:ring-0">
+              <label for="cfgAutoHeal" class="text-xs text-gray-700 font-medium">Enable automatic self-healing recovery mode</label>
+            </div>
+
+            <button type="submit" class="w-full btn-samsung-primary py-2.5 uppercase tracking-wider font-semibold text-xs mt-2">
+              Apply & Save Configuration
+            </button>
+          </form>
+        </div>
+
+      </div>
+
+      <!-- Right Column: Live Frame Preview & Realtime Logs (7 Cols) -->
+      <div class="lg:col-span-7 space-y-6">
+        
+        <!-- Live Preview Card (Only updates after USB ACK) -->
+        <div class="bg-white border border-[#DDE2E8] p-6 sharp-box shadow-sm">
+          <div class="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+            <div class="flex items-center space-x-2">
+              <h2 class="font-samsung text-xs font-bold uppercase tracking-widest text-[#002F6C]">Physical Frame Preview</h2>
+              <span class="text-[10px] text-gray-400">(USB Verified Output)</span>
+            </div>
+            <span id="previewTimestamp" class="text-[11px] text-gray-500 font-mono">No frames sent yet</span>
+          </div>
+
+          <!-- Physical Bezel Representation -->
+          <div class="flex justify-center items-center py-2">
+            <div class="frame-bezel w-full max-w-xl">
+              <div class="relative bg-black w-full overflow-hidden" style="aspect-ratio: 800/480;">
+                <img id="previewImage" src="" alt="Hardware Frame Preview" class="w-full h-full object-contain hidden">
+                <div id="previewPlaceholder" class="w-full h-full flex flex-col items-center justify-center text-center p-6 text-gray-400">
+                  <svg class="w-12 h-12 mb-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                  </svg>
+                  <p class="text-xs uppercase tracking-wider font-semibold">Awaiting First Frame Delivery</p>
+                  <p class="text-[11px] text-gray-500 mt-1">Preview reflects pixel-buffer only after successful USB transmission.</p>
+                </div>
+              </div>
+              <div class="text-center pt-2 text-[10px] tracking-widest font-samsung text-gray-400 font-bold uppercase">SAMSUNG</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Realtime System Log Console -->
+        <div class="bg-white border border-[#DDE2E8] p-6 sharp-box shadow-sm">
+          <div class="flex items-center justify-between border-b border-gray-100 pb-3 mb-3">
+            <h2 class="font-samsung text-xs font-bold uppercase tracking-widest text-[#002F6C]">Supervisor Event Stream</h2>
+            <button onclick="clearLogs()" class="text-[10px] uppercase tracking-wider text-gray-500 hover:text-gray-800">Clear</button>
+          </div>
+
+          <div id="logConsole" class="bg-[#111827] text-gray-200 font-mono text-[11px] p-3 h-44 overflow-y-auto space-y-1 sharp-box">
+            <div class="text-gray-500">[SYSTEM] Service initialized. Connecting to WebSocket stream...</div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Clean Minimalist Footer -->
+  <footer class="bg-white border-t border-[#DDE2E8] py-4 text-center text-xs text-gray-500 font-medium">
+    Samsung Digital Photo Frame Manager &bull; Mini-Monitor USB Driver &amp; Service
+  </footer>
+
+  <script>
+    let ws = null;
+
+    function connectWebSocket() {
+      const loc = window.location;
+      const wsUri = (loc.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + loc.host + '/ws/events';
+      ws = new WebSocket(wsUri);
+
+      ws.onopen = () => {
+        setConnectionState(true);
+        appendLog('WebSocket telemetry connected.', 'INFO');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          handleEvent(msg);
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      ws.onclose = () => {
+        setConnectionState(false);
+        setTimeout(connectWebSocket, 3000);
+      };
+    }
+
+    function setConnectionState(online) {
+      const badge = document.getElementById('connBadge');
+      const dot = document.getElementById('connDot');
+      const text = document.getElementById('connText');
+      if (online) {
+        badge.className = "flex items-center space-x-2 text-xs font-semibold px-3 py-1.5 sharp-box border border-emerald-200 bg-emerald-50 text-emerald-700";
+        dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+        text.innerText = "DAEMON ONLINE";
+      } else {
+        badge.className = "flex items-center space-x-2 text-xs font-semibold px-3 py-1.5 sharp-box border border-red-200 bg-red-50 text-red-700";
+        dot.className = "w-2.5 h-2.5 rounded-full bg-red-500";
+        text.innerText = "OFFLINE (RETRYING)";
+      }
+    }
+
+    function handleEvent(msg) {
+      if (msg.type === 'status') {
+        updateStatusUI(msg.data);
+      } else if (msg.type === 'log') {
+        appendLog(msg.data.message, msg.data.level, msg.data.time);
+      } else if (msg.type === 'preview_updated') {
+        refreshPreviewImage();
+      }
+    }
+
+    function updateStatusUI(data) {
+      const stateBadge = document.getElementById('badgeDeviceState');
+      const recovery = document.getElementById('recoveryBanner');
+      
+      document.getElementById('statModel').innerText = data.model;
+      document.getElementById('statResolution').innerText = data.resolution;
+      document.getElementById('statFramesSent').innerText = data.frames_sent;
+
+      if (data.state === 'DISPLAY_MODE') {
+        stateBadge.className = "text-[11px] font-bold px-2.5 py-1 sharp-box uppercase tracking-wider bg-emerald-100 text-emerald-800";
+        stateBadge.innerText = "DISPLAY MODE (OK)";
+        recovery.classList.add('hidden');
+      } else if (data.state === 'STORAGE_MODE') {
+        stateBadge.className = "text-[11px] font-bold px-2.5 py-1 sharp-box uppercase tracking-wider bg-amber-100 text-amber-800";
+        stateBadge.innerText = "STORAGE MODE";
+        recovery.classList.remove('hidden');
+        document.getElementById('recoveryTitle').innerText = "Device in Storage Mode (Switching...)";
+      } else {
+        stateBadge.className = "text-[11px] font-bold px-2.5 py-1 sharp-box uppercase tracking-wider bg-gray-100 text-gray-600";
+        stateBadge.innerText = "DISCONNECTED";
+        recovery.classList.add('hidden');
+      }
+
+      if (data.has_preview && document.getElementById('previewImage').classList.contains('hidden')) {
+        refreshPreviewImage();
+      }
+    }
+
+    function refreshPreviewImage() {
+      const img = document.getElementById('previewImage');
+      const placeholder = document.getElementById('previewPlaceholder');
+      const timestamp = document.getElementById('previewTimestamp');
+
+      img.src = '/api/preview/latest.jpg?t=' + Date.now();
+      img.onload = () => {
+        img.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+        timestamp.innerText = 'Rendered: ' + new Date().toLocaleTimeString();
+      };
+    }
+
+    function appendLog(text, level, timeStr) {
+      const consoleEl = document.getElementById('logConsole');
+      const div = document.createElement('div');
+      const time = timeStr || new Date().toLocaleTimeString();
+
+      let color = 'text-gray-300';
+      if (level === 'ERROR') color = 'text-red-400 font-bold';
+      if (level === 'WARNING') color = 'text-amber-400';
+      if (level === 'SUCCESS') color = 'text-emerald-400 font-semibold';
+
+      div.className = color;
+      div.innerText = `[${time}] ${text}`;
+      consoleEl.appendChild(div);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+
+    function clearLogs() {
+      document.getElementById('logConsole').innerHTML = '';
+    }
+
+    async function fetchConfig() {
+      const res = await fetch('/api/config');
+      if (res.ok) {
+        const cfg = await res.json();
+        document.getElementById('cfgUrl').value = cfg.target_url;
+        document.getElementById('cfgModel').value = cfg.model;
+        document.getElementById('cfgInterval').value = cfg.interval_seconds;
+        document.getElementById('cfgScaling').value = cfg.scaling_mode;
+        document.getElementById('cfgQuality').value = cfg.jpeg_quality;
+        document.getElementById('cfgAutoHeal').checked = cfg.auto_heal;
+      }
+    }
+
+    async function saveConfiguration(e) {
+      e.preventDefault();
+      const payload = {
+        target_url: document.getElementById('cfgUrl').value,
+        model: document.getElementById('cfgModel').value,
+        interval_seconds: parseInt(document.getElementById('cfgInterval').value),
+        scaling_mode: document.getElementById('cfgScaling').value,
+        jpeg_quality: parseInt(document.getElementById('cfgQuality').value),
+        auto_heal: document.getElementById('cfgAutoHeal').checked
+      };
+
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        appendLog('Configuration saved successfully.', 'SUCCESS');
+      } else {
+        appendLog('Failed to save configuration.', 'ERROR');
+      }
+    }
+
+    async function triggerImmediateRender() {
+      appendLog('Triggering immediate capture & USB sync...', 'INFO');
+      await fetch('/api/device/sync', { method: 'POST' });
+    }
+
+    async function requestDeviceReset() {
+      appendLog('Requesting soft USB bus reset...', 'WARNING');
+      await fetch('/api/device/reset', { method: 'POST' });
+    }
+
+    async function requestHealingSwitch() {
+      appendLog('Manual trigger: Storage to Display Mode...', 'INFO');
+      await fetch('/api/device/heal-switch', { method: 'POST' });
+    }
+
+    // Initialize
+    window.addEventListener('DOMContentLoaded', () => {
+      fetchConfig();
+      connectWebSocket();
+    });
+  </script>
+</body>
+</html>
+

@@ -1,0 +1,16 @@
+[Unit]
+Description=Samsung Photo Frame Service & Web Controller
+After=network.target
+
+[Service]
+Type=simple
+User=%I
+WorkingDirectory=/home/andre/Development/SamsungFrame
+ExecStart=/usr/bin/python3 -m uvicorn service.main:app --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+

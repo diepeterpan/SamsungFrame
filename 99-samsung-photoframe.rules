@@ -1,0 +1,12 @@
+# Udev rules for Samsung Digital Photo Frames (SPF-87H & SPF-107H)
+# Copy to: /etc/udev/rules.d/99-samsung-photoframe.rules
+# Then reload: sudo udevadm control --reload-rules && sudo udevadm trigger
+
+# SPF-87H: Mass Storage (0x2033) & Mini-Display (0x2034)
+SUBSYSTEM=="usb", ATTR{idVendor}=="04e8", ATTR{idProduct}=="2033", MODE="0666", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04e8", ATTR{idProduct}=="2034", MODE="0666", GROUP="plugdev"
+
+# SPF-107H: Mass Storage (0x2027) & Mini-Display (0x2028)
+SUBSYSTEM=="usb", ATTR{idVendor}=="04e8", ATTR{idProduct}=="2027", MODE="0666", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04e8", ATTR{idProduct}=="2028", MODE="0666", GROUP="plugdev"
+
