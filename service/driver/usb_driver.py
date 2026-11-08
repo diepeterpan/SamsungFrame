@@ -90,6 +90,13 @@ class SamsungFrameDriver:
     def init_display_mode(self, dev: usb.core.Device) -> bool:
         """Initializes device in display mode."""
         try:
+            # Detach kernel driver if active on interface 0 (prevents Resource Busy / Errno 16)
+            try:
+                if dev.is_kernel_driver_active(0):
+                    dev.detach_kernel_driver(0)
+            except Exception:
+                pass
+
             try:
                 dev.set_configuration()
             except usb.core.USBError:
@@ -147,6 +154,14 @@ class SamsungFrameDriver:
             except Exception:
                 pass
             return False
+
+    def release_device(self, dev: Optional[usb.core.Device]):
+        """Disposes resources and releases claimed USB handles."""
+        if dev:
+            try:
+                usb.util.dispose_resources(dev)
+            except Exception:
+                pass
 
     def reset_device(self, dev: Optional[usb.core.Device] = None):
         """Soft USB bus reset."""

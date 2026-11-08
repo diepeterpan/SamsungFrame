@@ -155,6 +155,10 @@ class SupervisorEngine:
                     if self._consecutive_errors >= 3:
                         self.driver.reset_device(dev)
 
+                # Dispose USB resources after cycle to avoid resource locking/busy handle
+                if getattr(self.driver, "release_device", None):
+                    self.driver.release_device(dev)
+
             except Exception as e:
                 logger.error(f"Unexpected supervisor loop error: {e}", exc_info=True)
                 self.add_log(f"Supervisor error: {e}", "ERROR")
