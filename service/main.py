@@ -113,9 +113,16 @@ async def _run_single_sync():
 @app.post("/api/device/reset")
 async def reset_device():
     state, model, dev = driver.detect_device(supervisor.config.model)
-    driver.reset_device(dev)
-    supervisor.add_log("USB soft reset issued.", "WARNING")
-    return {"status": "reset_requested"}
+    if state == "STORAGE_MODE" and dev:
+        driver.switch_storage_to_display(dev)
+        supervisor.add_log("Device was in Storage Mode: issued Display Mode switch command.", "INFO")
+        return {"status": "switched_to_display"}
+    elif dev:
+        driver.reset_device(dev)
+        supervisor.add_log("USB soft reset issued.", "WARNING")
+        return {"status": "reset_requested"}
+    supervisor.add_log("No device detected to reset.", "WARNING")
+    return {"status": "no_device"}
 
 @app.post("/api/device/heal-switch")
 async def heal_switch():

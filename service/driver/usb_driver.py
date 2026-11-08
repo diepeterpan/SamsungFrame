@@ -71,13 +71,22 @@ class SamsungFrameDriver:
         """Sends USB control message to switch from mass storage to display mode."""
         logger.info("Attempting automatic mode switch: Storage -> Display Mode...")
         try:
+            # Detach usb-storage kernel driver if active on interface 0
+            try:
+                if dev.is_kernel_driver_active(0):
+                    dev.detach_kernel_driver(0)
+            except Exception:
+                pass
+
             # Control transfer: standard request to switch modes
             dev.ctrl_transfer(
                 usb.util.CTRL_TYPE_STANDARD | usb.util.CTRL_IN | usb.util.CTRL_RECIPIENT_DEVICE,
                 0x06, 0xFE, 0xFE, 254
             )
+            self.release_device(dev)
             return True
         except usb.core.USBError as e:
+            self.release_device(dev)
             # When the device switches modes, it immediately disconnects/resets bus.
             # "No such device" is expected normal behavior upon disconnect.
             if "No such device" in str(e) or "Input/Output Error" in str(e) or "Pipe" in str(e):

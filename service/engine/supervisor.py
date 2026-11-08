@@ -22,6 +22,7 @@ class SupervisorEngine:
         self.log_messages = []
         self._listeners = set()
         self._consecutive_errors = 0
+        self._previous_state: Optional[str] = None
 
     def add_log(self, text: str, level: str = "INFO"):
         entry = {
@@ -96,6 +97,16 @@ class SupervisorEngine:
                 state, model, dev = self.driver.detect_device(self.config.model)
                 resolution = self.driver.active_resolution
 
+                # Log meaningful state transitions
+                if state != self._previous_state:
+                    if state == "DISPLAY_MODE":
+                        self.add_log(f"Samsung Frame connected in Mini-Display mode ({model or 'SPF'}).", "SUCCESS")
+                    elif state == "STORAGE_MODE":
+                        self.add_log(f"Samsung Frame detected in Mass Storage mode (0x2033/0x2027). Auto-healing active.", "WARNING")
+                    elif state == "DISCONNECTED":
+                        self.add_log(f"Samsung Frame disconnected from USB. Polling every 2s for reconnection...", "INFO")
+                    self._previous_state = state
+
                 self.latest_status = {
                     "is_mock": getattr(self.driver, "is_mock", False),
                     "state": state,
@@ -116,7 +127,7 @@ class SupervisorEngine:
 
                 if state != "DISPLAY_MODE":
                     self._consecutive_errors += 1
-                    await asyncio.sleep(3)
+                    await asyncio.sleep(2)
                     continue
 
                 # Device is in DISPLAY MODE
@@ -125,7 +136,9 @@ class SupervisorEngine:
                 if not initialized:
                     self.add_log(f"Failed to send display setup packets: {self.driver.last_error}", "ERROR")
                     self._consecutive_errors += 1
-                    await asyncio.sleep(3)
+                    if getattr(self.driver, "release_device", None):
+                        self.driver.release_device(dev)
+                    await asyncio.sleep(2)
                     continue
 
                 # Capture target URL
