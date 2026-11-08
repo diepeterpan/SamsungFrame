@@ -1,15 +1,18 @@
 import os
 import time
+import json
 import base64
 import hashlib
 import secrets
 import logging
+import asyncio
 from typing import Optional, Dict, Any
 from urllib.parse import urlencode
+from urllib.request import Request as URLRequest, urlopen
+from urllib.error import HTTPError, URLError
 
-import aiohttp
-from fastapi import APIRouter, Request, Response, HTTPException, Depends
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Request, Response, HTTPException
+from fastapi.responses import RedirectResponse, HTMLResponse
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from pydantic import BaseModel
 
@@ -34,9 +37,7 @@ def _clean_expired_states():
         _AUTH_STATES.pop(k, None)
 
 def generate_pkce():
-    # 43-128 chars urlsafe token
     code_verifier = secrets.token_urlsafe(64)
-    # S256 challenge: BASE64URL-ENCODE(SHA256(ASCII(code_verifier))) without padding
     sha256_digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
     code_challenge = base64.urlsafe_b64encode(sha256_digest).decode("ascii").rstrip("=")
     return code_verifier, code_challenge
@@ -60,15 +61,31 @@ def check_authorized(request: Request, supervisor_config: DeviceConfig):
         raise HTTPException(status_code=401, detail="Authentication required")
     return user
 
+def _sync_http_request(url: str, method: str = "GET", data: Optional[bytes] = None, headers: Optional[Dict[str, str]] = None, timeout: int = 15) -> Dict[str, Any]:
+    req = URLRequest(url, data=data, headers=headers or {}, method=method)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            return json.loads(body)
+    except HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="replace")
+        logger.error(f"HTTP Error calling {url}: {e.code} - {err_body}")
+        raise HTTPException(status_code=502, detail=f"OIDC IdP HTTP {e.code}: {err_body}")
+    except URLError as e:
+        logger.error(f"URL Error connecting to {url}: {e.reason}")
+        raise HTTPException(status_code=502, detail=f"OIDC connection error: {e.reason}")
+    except Exception as e:
+        logger.error(f"Unexpected error calling {url}: {e}")
+        raise HTTPException(status_code=502, detail=f"OIDC request failed: {e}")
+
+async def async_http_request(url: str, method: str = "GET", data: Optional[bytes] = None, headers: Optional[Dict[str, str]] = None, timeout: int = 15) -> Dict[str, Any]:
+    return await asyncio.to_thread(_sync_http_request, url, method, data, headers, timeout)
+
 async def fetch_discovery(discovery_url: str) -> Dict[str, Any]:
     url = discovery_url.rstrip("/")
     if not url.endswith("/.well-known/openid-configuration"):
         url = f"{url}/.well-known/openid-configuration"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            if resp.status != 200:
-                raise HTTPException(status_code=502, detail=f"Failed to fetch OIDC discovery from {url}: status {resp.status}")
-            return await resp.json()
+    return await async_http_request(url, method="GET")
 
 class OIDCUpdatePayload(BaseModel):
     enabled: bool
@@ -162,45 +179,35 @@ async def auth_callback(request: Request, code: Optional[str] = None, state: Opt
     redirect_uri = oidc_cfg.redirect_uri or str(request.url_for("auth_callback"))
 
     # Exchange authorization code for tokens
-    token_payload = {
+    token_params = {
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": redirect_uri,
     }
 
     if oidc_cfg.require_pkce:
-        token_payload["code_verifier"] = state_data["code_verifier"]
+        token_params["code_verifier"] = state_data["code_verifier"]
 
-    headers = {}
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
     auth_method = oidc_cfg.token_endpoint_auth_method or "client_secret_post"
     if auth_method == "client_secret_basic":
         creds = base64.b64encode(f"{oidc_cfg.client_id}:{oidc_cfg.client_secret}".encode()).decode()
         headers["Authorization"] = f"Basic {creds}"
     else:  # client_secret_post
-        token_payload["client_id"] = oidc_cfg.client_id
+        token_params["client_id"] = oidc_cfg.client_id
         if oidc_cfg.client_secret:
-            token_payload["client_secret"] = oidc_cfg.client_secret
+            token_params["client_secret"] = oidc_cfg.client_secret
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(token_endpoint, data=token_payload, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-            if resp.status != 200:
-                err_text = await resp.text()
-                logger.error(f"Token exchange failed: {resp.status} - {err_text}")
-                raise HTTPException(status_code=502, detail=f"Token exchange failed: {err_text}")
-            token_data = await resp.json()
+    token_body = urlencode(token_params).encode("utf-8")
+    token_data = await async_http_request(token_endpoint, method="POST", data=token_body, headers=headers, timeout=15)
 
-        access_token = token_data.get("access_token")
-        if not access_token:
-            raise HTTPException(status_code=502, detail="Token response missing access_token")
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=502, detail="Token response missing access_token")
 
-        # Query userinfo endpoint to retrieve username
-        userinfo_headers = {"Authorization": f"Bearer {access_token}"}
-        async with session.get(userinfo_endpoint, headers=userinfo_headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            if resp.status != 200:
-                err_text = await resp.text()
-                logger.error(f"UserInfo request failed: {resp.status} - {err_text}")
-                raise HTTPException(status_code=502, detail=f"UserInfo request failed: {err_text}")
-            userinfo = await resp.json()
+    # Query userinfo endpoint to retrieve username
+    userinfo_headers = {"Authorization": f"Bearer {access_token}"}
+    userinfo = await async_http_request(userinfo_endpoint, method="GET", headers=userinfo_headers, timeout=10)
 
     # Extract display username
     username = (
@@ -242,7 +249,6 @@ async def get_oidc_config(request: Request):
         check_authorized(request, supervisor.config)
     
     cfg = supervisor.config.oidc.model_dump()
-    # Mask client secret for display
     if cfg.get("client_secret"):
         cfg["client_secret_set"] = True
         cfg["client_secret"] = "********"
@@ -253,12 +259,10 @@ async def get_oidc_config(request: Request):
 @router.post("/api/oidc/config")
 async def update_oidc_config(request: Request, payload: OIDCUpdatePayload):
     from service.main import supervisor
-    # If OIDC is currently enabled, require authentication to change it
     if supervisor.config.oidc.enabled:
         check_authorized(request, supervisor.config)
 
     current_secret = supervisor.config.oidc.client_secret
-    # If client_secret in payload is omitted or asterisks, preserve existing secret
     secret_to_use = payload.client_secret
     if not secret_to_use or secret_to_use.startswith("****"):
         secret_to_use = current_secret
@@ -278,4 +282,3 @@ async def update_oidc_config(request: Request, payload: OIDCUpdatePayload):
     save_config(supervisor.config)
     supervisor.add_log(f"OIDC configuration updated (enabled={new_oidc.enabled}).", "INFO")
     return {"status": "ok", "enabled": new_oidc.enabled}
-
