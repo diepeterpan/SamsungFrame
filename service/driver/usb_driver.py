@@ -1,7 +1,9 @@
 import time
 import struct
+import io
 import logging
 from typing import Optional, Tuple
+from PIL import Image
 import usb.core
 import usb.util
 
@@ -24,6 +26,18 @@ SUPPORTED_MODELS = {
 CHUNK_SIZE = 0x4000     # 16 KB
 BUFFER_SIZE = 0x20000   # 128 KB
 BULK_ENDPOINT = 0x02
+
+def _generate_blank_jpeg(width: int, height: int) -> bytes:
+    """Pre-generates an instant black JPEG buffer for watchdog keep-alive."""
+    img = Image.new("RGB", (width, height), (0, 0, 0))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=80)
+    return buf.getvalue()
+
+BLANK_FRAMES = {
+    model_name: _generate_blank_jpeg(info["resolution"][0], info["resolution"][1])
+    for model_name, info in SUPPORTED_MODELS.items()
+}
 
 class SamsungFrameDriver:
     def __init__(self):
@@ -124,6 +138,18 @@ class SamsungFrameDriver:
             logger.error(f"Failed to initialize display mode: {e}")
             self.last_error = str(e)
             return False
+
+    def send_blank_frame(self, dev: usb.core.Device, model_name: Optional[str] = None) -> bool:
+        """Immediately transmits a pre-rendered blank JPEG to satisfy hardware watchdog."""
+        if model_name and model_name in BLANK_FRAMES:
+            blank_bytes = BLANK_FRAMES[model_name]
+        elif self.active_resolution:
+            # Fallback based on active resolution if model name is generic/unknown
+            w, h = self.active_resolution
+            blank_bytes = _generate_blank_jpeg(w, h)
+        else:
+            blank_bytes = BLANK_FRAMES["SPF-87H"]
+        return self.write_jpeg_buffer(dev, blank_bytes)
 
     def write_jpeg_buffer(self, dev: usb.core.Device, jpeg_bytes: bytes) -> bool:
         """

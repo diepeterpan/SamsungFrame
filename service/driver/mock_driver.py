@@ -87,6 +87,10 @@ class MockSamsungFrameDriver:
             return False
         return True
 
+    def send_blank_frame(self, dev: Any, model_name: Optional[str] = None) -> bool:
+        blank_bytes = b"\xff\xd8\xff\xe0" + (b"\x00" * 1000) + b"\xff\xd9"
+        return self.write_jpeg_buffer(dev, blank_bytes)
+
     def write_jpeg_buffer(self, dev: Any, jpeg_bytes: bytes) -> bool:
         if self.simulate_stall:
             self.last_error = "Simulated USB endpoint stall / pipe error"

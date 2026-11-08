@@ -23,6 +23,7 @@ class SupervisorEngine:
         self._listeners = set()
         self._consecutive_errors = 0
         self._previous_state: Optional[str] = None
+        self._display_mode_locked: bool = False
 
     def add_log(self, text: str, level: str = "INFO"):
         entry = {
@@ -127,7 +128,8 @@ class SupervisorEngine:
 
                 if state != "DISPLAY_MODE":
                     self._consecutive_errors += 1
-                    await asyncio.sleep(2)
+                    self._display_mode_locked = False
+                    await asyncio.sleep(1)
                     continue
 
                 # Device is in DISPLAY MODE
@@ -136,10 +138,23 @@ class SupervisorEngine:
                 if not initialized:
                     self.add_log(f"Failed to send display setup packets: {self.driver.last_error}", "ERROR")
                     self._consecutive_errors += 1
+                    self._display_mode_locked = False
                     if getattr(self.driver, "release_device", None):
                         self.driver.release_device(dev)
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(1)
                     continue
+
+                # HARDWARE LOCK: If newly connected to DISPLAY_MODE, immediately transmit
+                # pre-cached blank keep-alive frame (<50ms) to defeat the 9.5s firmware watchdog.
+                if not self._display_mode_locked:
+                    target_model = model or self.config.model
+                    self.add_log(f"Mini-Display detected ({target_model}). Sending instant keep-alive frame to lock display mode...", "INFO")
+                    lock_ok = self.driver.send_blank_frame(dev, target_model)
+                    if lock_ok:
+                        self._display_mode_locked = True
+                        self.add_log(f"Hardware display mode ({target_model}) locked successfully. Fetching webpage...", "SUCCESS")
+                    else:
+                        self.add_log(f"Warning: Failed to deliver instant keep-alive: {self.driver.last_error}", "WARNING")
 
                 # Capture target URL
                 try:
