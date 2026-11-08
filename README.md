@@ -15,6 +15,20 @@ It continuously captures any user-configured webpage or web dashboard (Home Assi
 
 ---
 
+## Web Management Dashboard
+
+<div align="center">
+  <img src="service/static/docs/web_ui_dashboard.png" alt="Samsung Photo Frame Control Center Web UI" width="850" />
+  <p><em>Real-time web control center with live USB telemetry, preview, and configuration management.</em></p>
+</div>
+
+* **Live Status & Telemetry**: Instant feedback on device state (`DISPLAY_MODE`, `STORAGE_MODE`, `DISCONNECTED`), detected model, resolution, and frames delivered.
+* **Display Configuration**: Set target dashboard/webpage URL, refresh interval (2s–3600s), scaling mode (`Fit & Letterbox`, `Fit Width`, `Cover & Crop`, `Exact Stretch`), and JPEG compression quality.
+* **Hardware-Verified Preview**: Displays the rendered output image only after verified acknowledgment of delivery over the physical USB endpoint.
+* **Supervisor Event Stream**: Real-time WebSocket log stream with ring buffer retention.
+
+---
+
 ## Technical Hardware & Protocol Specifications
 
 Samsung photo frames do not expose a standard HDMI, DisplayPort, or USB DisplayLink interface. Instead, they use a proprietary Samsung bulk endpoint protocol originally reverse-engineered by Grace Woo (MIT Media Lab) and modified by Joonas Lehthtinen (Gekkio):
@@ -28,6 +42,10 @@ Samsung photo frames do not expose a standard HDMI, DisplayPort, or USB DisplayL
 
 ### 2. State Transitions & Mode Switching
 When plugged in or powered on, the frame's internal firmware defaults to Mass Storage mode or prompts the user.
+
+> [!TIP]
+> **Recommended Hardware Setup**: When connecting the device or selecting a mode on the frame's physical display menu, choose **MASS STORAGE mode** and let the service automatically issue the control switch into **MINI MONITOR / DISPLAY mode**. Mode switching over USB might not always succeed on the very first attempt; if needed, simply retry or let the supervisor auto-heal.
+
 * **Storage to Display Mode Switch**:
   To programmatically switch the frame without touching physical buttons, a standard USB device control transfer is sent:
   ```python
