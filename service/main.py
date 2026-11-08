@@ -51,6 +51,19 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Samsung Photo Frame Controller", lifespan=lifespan)
 
+# Mount static files directory
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    ico_path = os.path.join(static_dir, "favicon.ico")
+    if os.path.exists(ico_path):
+        from fastapi.responses import FileResponse
+        return FileResponse(ico_path, media_type="image/x-icon")
+    raise HTTPException(status_code=404)
+
 @app.get("/", response_class=HTMLResponse)
 async def get_dashboard():
     template_path = os.path.join(os.path.dirname(__file__), "templates", "index.html")

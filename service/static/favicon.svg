@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="screenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#002F6C" />
+      <stop offset="100%" stop-color="#034EA2" />
+    </linearGradient>
+  </defs>
+  <!-- Outer Frame Bezel -->
+  <rect x="3" y="7" width="58" height="46" rx="4" fill="#111827" stroke="#374151" stroke-width="1.5"/>
+  <!-- Inner Display Area -->
+  <rect x="9" y="13" width="46" height="32" rx="1.5" fill="url(#screenGrad)"/>
+  <!-- Image graphic on screen: Sun and mountains -->
+  <circle cx="37" cy="22" r="4" fill="#60A5FA"/>
+  <polygon points="13,41 27,27 38,38 41,35 51,45 13,45" fill="#FFFFFF" opacity="0.9"/>
+  <!-- Power LED Indicator -->
+  <circle cx="32" cy="49.5" r="1.2" fill="#10B981"/>
+  <!-- Stand / Base -->
+  <polygon points="26,53 38,53 43,58 21,58" fill="#4B5563"/>
+</svg>
+
