@@ -395,6 +395,12 @@
       div.className = color;
       div.innerText = `[${time}] ${text}`;
       consoleEl.appendChild(div);
+      
+      // Keep only latest 100 entries in the browser DOM to prevent memory clogging
+      while (consoleEl.children.length > 100) {
+        consoleEl.removeChild(consoleEl.firstChild);
+      }
+
       consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 

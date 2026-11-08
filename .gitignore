@@ -6,3 +6,4 @@ config.json
 *.swp
 venv/
 .venv/
+legacy/

@@ -9,132 +9,124 @@
 
 ## Overview
 
-This project provides an enterprise-ready daemon and web dashboard to repurpose legacy **Samsung Digital Photo Frames** (e.g., **SPF-87H** and **SPF-107H**) as real-time secondary displays over USB on modern Linux systems.
+This project provides an enterprise-ready daemon, Docker service, and web dashboard to repurpose legacy **Samsung Digital Photo Frames** (e.g., **SPF-87H** and **SPF-107H**) as real-time secondary displays over USB on modern Linux systems.
 
 It continuously captures any user-configured webpage or web dashboard (Home Assistant, Grafana, custom status screens, clocks, weather) using headless Chromium, formats and letterboxes the image to the frame's exact native resolution, and streams it over USB Bulk endpoints.
 
-### Key Capabilities
+---
 
-* **Modern Web Rendering**: Uses Playwright-driven headless Chromium supporting modern CSS Grid, Flexbox, custom webfonts, and client-side JavaScript.
-* **Aspect Ratio Calibration**: Automatic scaling with letterboxing (black bars), crop-to-center, or stretch modes powered by Pillow.
-* **Self-Healing State Engine**:
-  * Automatically detects whether the device is in **Mass Storage Mode** (`0x2033` / `0x2027`) or **Mini-Display Mode** (`0x2034` / `0x2028`).
-  * Emits SCSI/USB control commands to switch into Mini-Display mode automatically upon connection.
-  * Recovers from USB endpoint stalls (`clear_halt`), pipe errors, and re-enumerations without requiring physical unplugs.
-  * Supports optional `virsh` VM USB passthrough re-attachment hooks.
-* **Samsung-Branded Web UI**:
-  * Follows the Samsung brand design language (Samsung Blue `#034EA2`, crisp white, jet black, and sharp geometry).
-  * Real-time WebSocket event logs and status diagnostics.
-  * **Verified Live Preview**: The dashboard preview canvas **strictly updates only after confirmation of a successful USB write** to the physical device.
+## Technical Hardware & Protocol Specifications
+
+Samsung photo frames do not expose a standard HDMI, DisplayPort, or USB DisplayLink interface. Instead, they use a proprietary Samsung bulk endpoint protocol originally reverse-engineered by Grace Woo (MIT Media Lab) and modified by Joonas Lehthtinen (Gekkio):
+
+### 1. Hardware Identification & Modes
+
+* **Vendor ID**: Samsung Electronics `0x04E8`
+* **Supported Models**:
+  * **Samsung SPF-87H**: 800 × 480 native resolution (Storage PID: `0x2033`, Mini-Display PID: `0x2034`)
+  * **Samsung SPF-107H**: 1024 × 600 native resolution (Storage PID: `0x2027`, Mini-Display PID: `0x2028`)
+
+### 2. State Transitions & Mode Switching
+When plugged in or powered on, the frame's internal firmware defaults to Mass Storage mode or prompts the user.
+* **Storage to Display Mode Switch**:
+  To programmatically switch the frame without touching physical buttons, a standard USB device control transfer is sent:
+  ```python
+  dev.ctrl_transfer(CTRL_TYPE_STANDARD | CTRL_IN | CTRL_RECIPIENT_DEVICE, 0x06, 0xFE, 0xFE, 254)
+  ```
+  The device disconnects immediately from the USB bus and re-enumerates as product ID `0x2034` (or `0x2028`).
+* **Display Mode Initialization & Keep-Alive Handshake**:
+  Once in display mode, a vendor control message is sent to prevent the photo frame firmware from timing out or exiting display mode:
+  ```python
+  # Request vendor command 0x04; expected response is byte [0x03]
+  dev.ctrl_transfer(CTRL_TYPE_VENDOR | CTRL_IN | CTRL_RECIPIENT_DEVICE, 0x04, 0x00, 0x00, 1)
+  ```
+
+### 3. Binary Framing Protocol & Bulk Writes
+Images must be JPEG format, calibrated to the exact resolution of the frame.
+* **12-byte Binary Header**:
+  Every JPEG frame transmitted to the device must be prefixed with:
+  ```
+  [0..3]  Magic Bytes:      \xa5\x5a\x09\x04
+  [4..7]  Image Length:     4-byte little-endian unsigned integer (len(jpeg_bytes))
+  [8..11] Command Marker:   \x46\x00\x00\x00
+  ```
+* **Chunking & Buffer Alignment**:
+  * Total payload (`header + raw_jpeg_bytes`) is transferred in **128 KB (0x20000)** buffers.
+  * If the final chunk is smaller than 128 KB, it **must be zero-padded (`\x00`)** to exactly 128 KB.
+  * Transferred in **16 KB (0x4000)** sub-chunks to Bulk Endpoint `0x02`.
+* **Verified Preview Behavior**:
+  The web UI live preview strictly reflects the image buffer **only after receipt of the bulk write acknowledgment** from the hardware (or mock driver).
 
 ---
 
-## Supported Hardware
+## Log Retention & Supervisor Event Stream
 
-| Model | Native Resolution | Mass Storage PID | Display Mode PID |
-| :--- | :--- | :--- | :--- |
-| **Samsung SPF-87H** | 800 × 480 | `0x2033` | `0x2034` |
-| **Samsung SPF-107H** | 1024 × 600 | `0x2027` | `0x2028` |
-
----
-
-## Directory Structure
-
-```
-├── 99-samsung-photoframe.rules  # Udev rules for rootless USB device permissions
-├── config.json                  # Persistent service configuration
-├── legacy/                      # Archived legacy scripts, Python 2 code, and original zip files
-│   ├── samsungframe/            # Previous Dockerfile and scripts
-│   └── setup/                   # Setup shell scripts and legacy attempts
-├── samsungframe.service         # Systemd service unit file
-├── service/
-│   ├── config/                  # Configuration models and loaders (Pydantic)
-│   ├── driver/                  # USB PyUSB driver and mode-switch logic
-│   ├── engine/                  # Playwright capture engine & self-healing supervisor
-│   ├── static/docs/             # Product photography and assets
-│   ├── templates/               # Samsung-styled web management UI
-│   ├── tests/                   # Unit and integration test suites
-│   └── main.py                  # FastAPI web server and WebSocket broadcaster
-```
+* **Retention Policy**: To prevent unbounded memory growth and avoid clogging logs during long-running 24/7 dashboard deployments:
+  * **In-Memory Ring Buffer**: The Python supervisor retains strictly the **latest 100 log entries** in memory (`pop(0)` when exceeded).
+  * **Browser DOM Pruning**: The Web UI console automatically prunes the oldest DOM elements, capping visible log elements at **100 entries**.
+  * **Initial Connection Catch-Up**: Newly connected browser WebSocket clients receive the last **30 recent events** on connection, followed by real-time streams.
 
 ---
 
-## Installation & Setup
+## Docker Runtime & Usage
 
-### 1. Prerequisites (Debian/Ubuntu/Fedora)
+The application is containerized using Docker and Docker Compose with full USB passthrough support.
 
-Ensure Python 3 and basic USB libraries are installed:
+### Running with Docker Compose (Default via `start.sh`)
+
+Simply run:
 ```bash
-sudo apt update && sudo apt install -y python3 python3-pip libusb-1.0-0
+./start.sh
 ```
+* **Default behavior**: Builds and runs the Docker container, mounting `config.json` for persistent settings and `/dev/bus/usb` with `privileged: true` for direct hardware communication. If no physical frame is detected, it automatically falls back to mock simulation mode.
 
-Install Python dependencies and Playwright browser:
+### Docker Commands & Flags
+
 ```bash
-pip install --break-system-packages fastapi uvicorn websockets pyusb pillow playwright
-playwright install chromium
+# Run containerized with simulated hardware (test UI and self-healing)
+./start.sh --mock
+
+# Run on a custom port
+./start.sh --port 8085
+
+# Rebuild container image
+./start.sh --build
+
+# Gracefully stop running containers
+./start.sh --down
+
+# Run natively on the host system without Docker
+./start.sh --native
 ```
 
-### 2. Configure USB Permissions (Rootless Access)
+### Direct Docker Compose Usage
 
-To allow the service to communicate with the USB photo frame without needing `root` or `sudo`:
+```bash
+# Start container in detached mode
+docker compose -f docker/docker-compose.yml up -d
+
+# View container logs
+docker compose -f docker/docker-compose.yml logs -f
+
+# Stop container
+docker compose -f docker/docker-compose.yml down
+```
+
+---
+
+## Rootless USB Configuration (Host Setup)
+
+To allow the container or native service to access the USB device without `root` permission errors:
 
 ```bash
 sudo cp 99-samsung-photoframe.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
----
-
-## Usage
-
-### Running Locally / For Testing
-
-Start the application using `uvicorn`:
-
+Or execute the automated setup script:
 ```bash
-python3 -m uvicorn service.main:app --host 0.0.0.0 --port 8080
+./setup.sh
 ```
-
-Open your browser at:
-👉 **`http://localhost:8080`**
-
-From the dashboard you can:
-1. Enter your target URL (e.g. `http://homeassistant.local:8123` or any public dashboard).
-2. Adjust the refresh rate (e.g. every 10–30 seconds).
-3. Select scaling mode (`Fit & Letterbox`, `Cover & Crop`, `Stretch`).
-4. View live hardware status, frames transmitted, and real-time USB event logs.
-5. Manually trigger a soft USB reset or mode switch if needed.
-
-### Running as a Background Systemd Service
-
-To keep the service running automatically on system boot:
-
-1. Copy the systemd service file:
-   ```bash
-   sudo cp samsungframe.service /etc/systemd/system/
-   sudo systemctl daemon-reload
-   ```
-
-2. Enable and start:
-   ```bash
-   sudo systemctl enable --now samsungframe.service
-   ```
-
-3. Check logs:
-   ```bash
-   journalctl -u samsungframe.service -f
-   ```
-
----
-
-## Self-Healing & Troubleshooting
-
-* **Frame shows Mass Storage / Mini Monitor prompt**:
-  The supervisor automatically sends a USB command (`dev.ctrl_transfer`) to shift into display mode. If it remains stuck, select **"Mini Monitor"** on the frame's touch/side buttons once.
-* **USB Permission Denied**:
-  Ensure the `99-samsung-photoframe.rules` file is installed in `/etc/udev/rules.d/` and your user belongs to `plugdev` (or relog after reloading udev).
-* **Running inside a KVM/QEMU Virtual Machine**:
-  If the hypervisor loses USB passthrough upon mode-switch, enter your VM domain name and XML definition path in `config.json` (`virsh_domain` & `virsh_xml_path`). The supervisor will automatically re-attach the USB device upon re-enumeration.
 
 ---
 
@@ -143,4 +135,3 @@ To keep the service running automatically on system boot:
 ```bash
 python3 -m unittest discover -s service/tests
 ```
-
