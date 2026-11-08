@@ -93,10 +93,12 @@ if [ "$RUN_MODE" = "docker" ]; then
     export PORT="$PORT"
     if [ "$MOCK_FLAG" = "1" ]; then
         export FRAME_MOCK=1
+        export FRAME_FORCE_PHYSICAL=""
         echo "Mode: DOCKER CONTAINER [FORCED MOCK SIMULATOR]"
     else
         export FRAME_MOCK=""
-        echo "Mode: DOCKER CONTAINER [AUTO / PHYSICAL USB PASSTHROUGH]"
+        export FRAME_FORCE_PHYSICAL=1
+        echo "Mode: DOCKER CONTAINER [ALWAYS PHYSICAL USB HARDWARE]"
     fi
 
     # Check if container is already running
@@ -151,9 +153,12 @@ if [ "$RUN_MODE" = "native" ]; then
 
     if [ "$MOCK_FLAG" = "1" ]; then
         export FRAME_MOCK=1
+        export FRAME_FORCE_PHYSICAL=""
         echo "[3/3] Mode: NATIVE [FORCED MOCK SIMULATOR]"
     else
-        echo "[3/3] Mode: NATIVE [AUTO / PHYSICAL HARDWARE]"
+        export FRAME_MOCK=""
+        export FRAME_FORCE_PHYSICAL=1
+        echo "[3/3] Mode: NATIVE [ALWAYS PHYSICAL USB HARDWARE]"
     fi
 
     echo ""
