@@ -148,6 +148,55 @@ Or execute the automated setup script:
 
 ---
 
+## OpenID Connect (OIDC) Authentication
+
+The service supports OpenID Connect (OIDC) authentication with authorization code flow, PKCE (`S256`), and client authentication (`client_secret_post` or `client_secret_basic`).
+
+### Access Model
+* **Anonymous Mode** (OIDC active, user not logged in):
+  * Dashboard view, physical preview, and system event stream are viewable.
+  * All input fields and toggles are read-only / disabled.
+  * Action buttons (`SYNC NOW`, `OIDC CONFIG`, `SOFT RESET DEVICE`, `CAPTURE & SEND`, `FORCE MODE SWITCH`, and `APPLY & SAVE CONFIGURATION`) are hidden.
+  * A **Login** button is visible in the top-right header.
+* **Authenticated Mode**:
+  * Displays a user avatar icon (torso) with the authenticated username and a **Logout** button.
+  * Full editing and triggering capabilities are restored.
+  * The **[OIDC Config]** modal dialog button appears to the right of `Sync Now` to manage OIDC settings.
+
+### Authelia Configuration Example (Anonymized)
+
+Add the following client configuration to your Authelia `configuration.yml` under `identity_providers.oidc.clients`:
+
+```yaml
+identity_providers:
+  oidc:
+    clients:
+      - client_id: 'samsungframe-web'
+        client_name: 'Samsung Frame'
+        consent_mode: 'implicit'
+        client_secret: '$pbkdf2-sha512$EXAMPLE_HASH_REPLACE_WITH_YOUR_AUTHELIA_HASH' # Generated via authelia crypto hash generate
+        public: false
+        authorization_policy: 'one_factor' # Or 'two_factor' depending on your requirements
+        scopes:
+          - 'openid'
+          - 'profile'
+          - 'email'
+          - 'groups'
+        redirect_uris:
+          - 'https://<your-samsungframe-domain>/auth/callback'
+        grant_types:
+          - 'authorization_code'
+        response_types:
+          - 'code'
+        access_token_signed_response_alg: 'none'
+        userinfo_signed_response_alg: 'none'
+        token_endpoint_auth_method: 'client_secret_post'
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+```
+
+---
+
 ## Running Automated Tests
 
 ```bash

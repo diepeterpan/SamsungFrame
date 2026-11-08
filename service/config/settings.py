@@ -1,8 +1,19 @@
 import os
 import json
+from typing import Optional
 from pydantic import BaseModel, Field
 
 CONFIG_FILE = os.getenv("FRAME_CONFIG_PATH", "config.json")
+
+class OIDCConfig(BaseModel):
+    enabled: bool = Field(default=False, description="Enable OpenID Connect authentication")
+    discovery_url: str = Field(default="", description="Issuer or OpenID Connect discovery URL e.g. https://auth.example.com")
+    client_id: str = Field(default="samsungframe-web", description="OIDC client ID")
+    client_secret: str = Field(default="", description="OIDC client secret")
+    redirect_uri: str = Field(default="", description="OAuth2 callback redirect URI e.g. https://domain/auth/callback")
+    scopes: str = Field(default="openid profile email groups", description="OAuth2 scopes separated by spaces")
+    token_endpoint_auth_method: str = Field(default="client_secret_post", description="Token endpoint authentication method")
+    require_pkce: bool = Field(default=True, description="Enforce PKCE with S256 code challenge")
 
 class DeviceConfig(BaseModel):
     model: str = Field(default="AUTO", description="Target model: AUTO, SPF-87H, or SPF-107H")
@@ -13,6 +24,7 @@ class DeviceConfig(BaseModel):
     auto_heal: bool = Field(default=True, description="Enable automatic self-healing on USB mode mismatch")
     virsh_domain: str = Field(default="", description="Optional libvirt/virsh domain for USB passthrough recovery")
     virsh_xml_path: str = Field(default="", description="Optional XML path for virsh attach-device")
+    oidc: OIDCConfig = Field(default_factory=OIDCConfig, description="OpenID Connect configuration")
 
 def load_config() -> DeviceConfig:
     # If CONFIG_FILE is accidentally mounted as a directory by Docker (e.g. when host file was missing)
@@ -40,4 +52,3 @@ def save_config(cfg: DeviceConfig):
 
     with open(actual_file, "w") as f:
         f.write(cfg.model_dump_json(indent=2))
-

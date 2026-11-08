@@ -63,6 +63,15 @@
       box-shadow: 0 10px 25px rgba(0,0,0,0.18);
       border-radius: 2px;
     }
+    .auth-only-block {
+      display: block;
+    }
+    .auth-only-inline {
+      display: inline-flex;
+    }
+    .auth-hidden {
+      display: none !important;
+    }
   </style>
 </head>
 <body class="min-h-screen flex flex-col justify-between">
@@ -77,7 +86,7 @@
         <span class="text-sm font-semibold tracking-wider uppercase text-gray-700">Photo Frame Manager</span>
       </div>
 
-      <div class="flex items-center space-x-4">
+      <div class="flex items-center space-x-3">
         <div id="connBadge" class="flex items-center space-x-2 text-xs font-semibold px-3 py-1.5 sharp-box border border-gray-300 bg-gray-50 text-gray-600">
           <span class="w-2.5 h-2.5 rounded-full bg-gray-400" id="connDot"></span>
           <span id="connText">CONNECTING...</span>
@@ -85,9 +94,39 @@
         <div id="mockBadge" class="hidden flex items-center space-x-1.5 text-[10px] font-bold px-2 py-1 sharp-box border border-purple-300 bg-purple-50 text-purple-700 tracking-wider">
           <span>SIMULATED HARDWARE</span>
         </div>
-        <button onclick="triggerImmediateRender()" class="btn-samsung-primary text-xs px-4 py-2 uppercase tracking-wider">
+
+        <!-- Sync Now Button (hidden in anonymous mode) -->
+        <button id="btnHeaderSync" onclick="triggerImmediateRender()" class="btn-samsung-primary text-xs px-4 py-2 uppercase tracking-wider auth-action">
           Sync Now
         </button>
+
+        <!-- OIDC Config Modal Button (to the right of Sync Now, hidden in anonymous mode) -->
+        <button id="btnHeaderOidcConfig" onclick="openOidcModal()" class="btn-samsung-outline text-xs px-3 py-2 uppercase tracking-wider auth-action" title="Configure OpenID Connect">
+          OIDC Config
+        </button>
+
+        <div class="h-5 w-[1px] bg-gray-300 mx-1"></div>
+
+        <!-- Top Right Authentication Controls -->
+        <!-- 1. Login Button: only displayed when OIDC is active and user is logged out -->
+        <a id="btnTopLogin" href="/auth/login" class="hidden btn-samsung-primary text-xs px-4 py-2 uppercase tracking-wider">
+          Login
+        </a>
+
+        <!-- 2. Authenticated Info: Torso Icon + Username + Logout Button -->
+        <div id="topUserContainer" class="hidden flex items-center space-x-3">
+          <div class="flex items-center space-x-1.5 text-xs font-semibold text-gray-700 bg-gray-100 px-3 py-1.5 sharp-box border border-gray-300">
+            <!-- Little Torso SVG Icon -->
+            <svg class="w-3.5 h-3.5 text-[#034EA2]" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
+            </svg>
+            <span id="topUsername" class="max-w-[140px] truncate">User</span>
+          </div>
+          <a id="btnTopLogout" href="/auth/logout" class="btn-samsung-outline text-xs px-3 py-1.5 uppercase tracking-wider text-red-600 border-red-300 hover:bg-red-50 hover:text-red-700">
+            Logout
+          </a>
+        </div>
+
       </div>
     </div>
   </header>
@@ -107,7 +146,7 @@
             </p>
           </div>
         </div>
-        <div class="flex space-x-2">
+        <div class="flex space-x-2 auth-action">
           <button onclick="requestHealingSwitch()" class="btn-samsung-primary text-xs px-4 py-2 uppercase tracking-wide">
             Force Mode Switch
           </button>
@@ -134,7 +173,7 @@
           <!-- Mock Simulation Toolbar (Visible only when in mock mode) -->
           <div id="mockControls" class="hidden mb-4 p-3 bg-purple-50 border border-purple-200 sharp-box">
             <div class="text-[10px] font-bold uppercase tracking-wider text-purple-900 mb-2">Simulate Hardware Faults (Testing)</div>
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid grid-cols-3 gap-2 auth-action">
               <button onclick="injectFault('storage')" class="bg-white border border-purple-300 text-purple-800 text-[10px] font-semibold py-1 hover:bg-purple-100">
                 Storage Mode
               </button>
@@ -161,7 +200,8 @@
             <dd id="statSelfHeal" class="font-semibold text-emerald-600 text-right">ACTIVE</dd>
           </dl>
 
-          <div class="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between">
+          <!-- Buttons hidden in anonymous mode -->
+          <div id="hardwareActionsContainer" class="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between auth-action">
             <button onclick="requestDeviceReset()" class="btn-samsung-outline text-xs px-3 py-2 uppercase tracking-wider">
               Soft Reset Device
             </button>
@@ -173,7 +213,10 @@
 
         <!-- Configuration Settings Card -->
         <div class="bg-white border border-[#DDE2E8] p-6 sharp-box shadow-sm">
-          <h2 class="font-samsung text-xs font-bold uppercase tracking-widest text-[#002F6C] border-b border-gray-100 pb-3 mb-4">Display Configuration</h2>
+          <div class="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+            <h2 class="font-samsung text-xs font-bold uppercase tracking-widest text-[#002F6C]">Display Configuration</h2>
+            <span id="readOnlyBadge" class="hidden text-[10px] font-bold px-2 py-0.5 bg-gray-100 text-gray-500 uppercase tracking-wider border border-gray-200">READ-ONLY MODE</span>
+          </div>
           
           <form id="configForm" onsubmit="saveConfiguration(event)" class="space-y-4 text-xs">
             <div>
@@ -219,7 +262,8 @@
               <label for="cfgAutoHeal" class="text-xs text-gray-700 font-medium">Enable automatic self-healing recovery mode</label>
             </div>
 
-            <button type="submit" class="w-full btn-samsung-primary py-2.5 uppercase tracking-wider font-semibold text-xs mt-2">
+            <!-- Save button hidden in anonymous mode -->
+            <button id="btnSaveConfig" type="submit" class="w-full btn-samsung-primary py-2.5 uppercase tracking-wider font-semibold text-xs mt-2 auth-action">
               Apply & Save Configuration
             </button>
           </form>
@@ -276,6 +320,73 @@
 
   </main>
 
+  <!-- OIDC Configuration Modal Dialog -->
+  <div id="oidcModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4">
+    <div class="bg-white border border-[#DDE2E8] sharp-box shadow-xl max-w-lg w-full p-6 relative">
+      <div class="flex items-center justify-between border-b border-gray-200 pb-3 mb-4">
+        <h3 class="font-samsung text-sm font-bold uppercase tracking-wider text-[#002F6C]">OpenID Connect (OIDC) Settings</h3>
+        <button onclick="closeOidcModal()" class="text-gray-400 hover:text-gray-600 font-bold text-lg leading-none">&times;</button>
+      </div>
+
+      <form id="oidcConfigForm" onsubmit="saveOidcConfiguration(event)" class="space-y-4 text-xs">
+        <div class="flex items-center space-x-2 pb-2 border-b border-gray-100">
+          <input id="oidcEnabled" type="checkbox" class="w-4 h-4 text-[#034EA2] border-gray-300 rounded-none focus:ring-0">
+          <label for="oidcEnabled" class="text-xs font-bold text-gray-800 uppercase tracking-wide">Enable OIDC Authentication</label>
+        </div>
+
+        <div>
+          <label class="block font-semibold uppercase tracking-wider text-gray-700 mb-1">Issuer / Discovery URL</label>
+          <input id="oidcDiscoveryUrl" type="url" class="w-full border border-gray-300 p-2 sharp-box focus:border-[#034EA2] focus:outline-none" placeholder="https://auth.example.com">
+          <span class="text-[10px] text-gray-400">Authelia domain or discovery URL (/.well-known/openid-configuration)</span>
+        </div>
+
+        <div>
+          <label class="block font-semibold uppercase tracking-wider text-gray-700 mb-1">Client ID</label>
+          <input id="oidcClientId" type="text" class="w-full border border-gray-300 p-2 sharp-box focus:border-[#034EA2] focus:outline-none" placeholder="samsungframe-web">
+        </div>
+
+        <div>
+          <label class="block font-semibold uppercase tracking-wider text-gray-700 mb-1">Client Secret</label>
+          <input id="oidcClientSecret" type="password" class="w-full border border-gray-300 p-2 sharp-box focus:border-[#034EA2] focus:outline-none" placeholder="Leave blank to keep existing secret">
+        </div>
+
+        <div>
+          <label class="block font-semibold uppercase tracking-wider text-gray-700 mb-1">Redirect URI (Callback)</label>
+          <input id="oidcRedirectUri" type="url" class="w-full border border-gray-300 p-2 sharp-box focus:border-[#034EA2] focus:outline-none" placeholder="https://samsungframe.example.com/auth/callback">
+        </div>
+
+        <div>
+          <label class="block font-semibold uppercase tracking-wider text-gray-700 mb-1">Scopes</label>
+          <input id="oidcScopes" type="text" value="openid profile email groups" class="w-full border border-gray-300 p-2 sharp-box focus:border-[#034EA2] focus:outline-none">
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block font-semibold uppercase tracking-wider text-gray-700 mb-1">Auth Method</label>
+            <select id="oidcAuthMethod" class="w-full border border-gray-300 p-2 sharp-box focus:border-[#034EA2] focus:outline-none bg-white">
+              <option value="client_secret_post">client_secret_post</option>
+              <option value="client_secret_basic">client_secret_basic</option>
+            </select>
+          </div>
+
+          <div class="flex items-center pt-5 space-x-2">
+            <input id="oidcRequirePkce" type="checkbox" checked class="w-4 h-4 text-[#034EA2] border-gray-300 rounded-none focus:ring-0">
+            <label for="oidcRequirePkce" class="text-xs text-gray-700 font-semibold">Require PKCE (S256)</label>
+          </div>
+        </div>
+
+        <div class="mt-5 pt-4 border-t border-gray-200 flex items-center justify-end space-x-3">
+          <button type="button" onclick="closeOidcModal()" class="btn-samsung-outline text-xs px-4 py-2 uppercase tracking-wide">
+            Cancel
+          </button>
+          <button type="submit" class="btn-samsung-primary text-xs px-4 py-2 uppercase tracking-wide">
+            Save Settings
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Clean Minimalist Footer -->
   <footer class="bg-white border-t border-[#DDE2E8] py-4 text-center text-xs text-gray-500 font-medium">
     Samsung Digital Photo Frame Manager &bull; Mini-Monitor USB Driver &amp; Service
@@ -283,6 +394,142 @@
 
   <script>
     let ws = null;
+    let authState = {
+      oidc_enabled: false,
+      authenticated: true,
+      username: null,
+      anonymous: false
+    };
+
+    async function checkAuthStatus() {
+      try {
+        const res = await fetch('/api/auth/status');
+        if (res.ok) {
+          authState = await res.json();
+          renderAuthUI();
+        }
+      } catch (e) {
+        console.error("Auth status fetch error:", e);
+      }
+    }
+
+    function renderAuthUI() {
+      const btnLogin = document.getElementById('btnTopLogin');
+      const userContainer = document.getElementById('topUserContainer');
+      const usernameEl = document.getElementById('topUsername');
+      const readOnlyBadge = document.getElementById('readOnlyBadge');
+      const actionElements = document.querySelectorAll('.auth-action');
+
+      if (!authState.oidc_enabled) {
+        // OIDC Disabled -> All features visible and writable; no login/logout buttons
+        btnLogin.classList.add('hidden');
+        userContainer.classList.add('hidden');
+        readOnlyBadge.classList.add('hidden');
+        setFormReadOnly(false);
+        actionElements.forEach(el => el.classList.remove('auth-hidden'));
+      } else if (authState.authenticated) {
+        // Authenticated user
+        btnLogin.classList.add('hidden');
+        userContainer.classList.remove('hidden');
+        usernameEl.innerText = authState.username || "User";
+        readOnlyBadge.classList.add('hidden');
+        setFormReadOnly(false);
+        actionElements.forEach(el => el.classList.remove('auth-hidden'));
+      } else {
+        // Anonymous mode (OIDC active, user not logged in)
+        btnLogin.classList.remove('hidden');
+        userContainer.classList.add('hidden');
+        readOnlyBadge.classList.remove('hidden');
+        setFormReadOnly(true);
+        actionElements.forEach(el => el.classList.add('auth-hidden'));
+      }
+    }
+
+    function setFormReadOnly(isReadOnly) {
+      const inputs = [
+        document.getElementById('cfgUrl'),
+        document.getElementById('cfgModel'),
+        document.getElementById('cfgInterval'),
+        document.getElementById('cfgScaling'),
+        document.getElementById('cfgQuality'),
+        document.getElementById('cfgAutoHeal')
+      ];
+      inputs.forEach(input => {
+        if (!input) return;
+        if (input.type === 'checkbox') {
+          input.disabled = isReadOnly;
+        } else if (input.tagName === 'SELECT') {
+          input.disabled = isReadOnly;
+        } else {
+          input.readOnly = isReadOnly;
+          if (isReadOnly) {
+            input.classList.add('bg-gray-50', 'text-gray-500');
+          } else {
+            input.classList.remove('bg-gray-50', 'text-gray-500');
+          }
+        }
+      });
+    }
+
+    function openOidcModal() {
+      fetchOidcConfig();
+      document.getElementById('oidcModal').classList.remove('hidden');
+    }
+
+    function closeOidcModal() {
+      document.getElementById('oidcModal').classList.add('hidden');
+    }
+
+    async function fetchOidcConfig() {
+      try {
+        const res = await fetch('/api/oidc/config');
+        if (res.ok) {
+          const cfg = await res.json();
+          document.getElementById('oidcEnabled').checked = cfg.enabled;
+          document.getElementById('oidcDiscoveryUrl').value = cfg.discovery_url || '';
+          document.getElementById('oidcClientId').value = cfg.client_id || 'samsungframe-web';
+          document.getElementById('oidcClientSecret').value = cfg.client_secret || '';
+          document.getElementById('oidcRedirectUri').value = cfg.redirect_uri || window.location.origin + '/auth/callback';
+          document.getElementById('oidcScopes').value = cfg.scopes || 'openid profile email groups';
+          document.getElementById('oidcAuthMethod').value = cfg.token_endpoint_auth_method || 'client_secret_post';
+          document.getElementById('oidcRequirePkce').checked = cfg.require_pkce !== false;
+        }
+      } catch (e) {
+        appendLog('Failed to fetch OIDC configuration.', 'ERROR');
+      }
+    }
+
+    async function saveOidcConfiguration(e) {
+      e.preventDefault();
+      const payload = {
+        enabled: document.getElementById('oidcEnabled').checked,
+        discovery_url: document.getElementById('oidcDiscoveryUrl').value,
+        client_id: document.getElementById('oidcClientId').value,
+        client_secret: document.getElementById('oidcClientSecret').value,
+        redirect_uri: document.getElementById('oidcRedirectUri').value,
+        scopes: document.getElementById('oidcScopes').value,
+        token_endpoint_auth_method: document.getElementById('oidcAuthMethod').value,
+        require_pkce: document.getElementById('oidcRequirePkce').checked
+      };
+
+      try {
+        const res = await fetch('/api/oidc/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          appendLog('OIDC configuration saved successfully.', 'SUCCESS');
+          closeOidcModal();
+          await checkAuthStatus();
+        } else {
+          const err = await res.json();
+          appendLog('Error saving OIDC configuration: ' + (err.detail || 'Forbidden'), 'ERROR');
+        }
+      } catch (err) {
+        appendLog('Failed to save OIDC configuration.', 'ERROR');
+      }
+    }
 
     function connectWebSocket() {
       const loc = window.location;
@@ -443,36 +690,48 @@
       if (res.ok) {
         appendLog('Configuration saved successfully.', 'SUCCESS');
       } else {
-        appendLog('Failed to save configuration.', 'ERROR');
+        appendLog('Failed to save configuration (Authentication required).', 'ERROR');
       }
     }
 
     async function triggerImmediateRender() {
       appendLog('Triggering immediate capture & USB sync...', 'INFO');
-      await fetch('/api/device/sync', { method: 'POST' });
+      const res = await fetch('/api/device/sync', { method: 'POST' });
+      if (!res.ok) {
+        appendLog('Sync rejected: Authentication required.', 'ERROR');
+      }
     }
 
     async function requestDeviceReset() {
       appendLog('Requesting soft USB bus reset...', 'WARNING');
-      await fetch('/api/device/reset', { method: 'POST' });
+      const res = await fetch('/api/device/reset', { method: 'POST' });
+      if (!res.ok) {
+        appendLog('Reset rejected: Authentication required.', 'ERROR');
+      }
     }
 
     async function requestHealingSwitch() {
       appendLog('Manual trigger: Storage to Display Mode...', 'INFO');
-      await fetch('/api/device/heal-switch', { method: 'POST' });
+      const res = await fetch('/api/device/heal-switch', { method: 'POST' });
+      if (!res.ok) {
+        appendLog('Action rejected: Authentication required.', 'ERROR');
+      }
     }
 
     async function injectFault(faultType) {
       appendLog(`Triggering mock fault injection: ${faultType}...`, 'WARNING');
-      await fetch(`/api/mock/fault/${faultType}`, { method: 'POST' });
+      const res = await fetch(`/api/mock/fault/${faultType}`, { method: 'POST' });
+      if (!res.ok) {
+        appendLog('Action rejected: Authentication required.', 'ERROR');
+      }
     }
 
     // Initialize
     window.addEventListener('DOMContentLoaded', () => {
+      checkAuthStatus();
       fetchConfig();
       connectWebSocket();
     });
   </script>
 </body>
 </html>
-

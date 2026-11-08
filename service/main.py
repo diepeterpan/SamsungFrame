@@ -2,7 +2,7 @@ import os
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Depends
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -11,6 +11,7 @@ from service.driver.usb_driver import SamsungFrameDriver
 from service.driver.mock_driver import MockSamsungFrameDriver
 from service.engine.capture_engine import WebCaptureEngine
 from service.engine.supervisor import SupervisorEngine
+from service.auth import router as auth_router, check_authorized
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("frame.main")
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI):
     await capturer.close()
 
 app = FastAPI(title="Samsung Photo Frame Controller", lifespan=lifespan)
+app.include_router(auth_router)
 
 # Mount static files directory
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -75,7 +77,8 @@ async def get_config():
     return supervisor.config
 
 @app.post("/api/config")
-async def update_config(new_cfg: DeviceConfig):
+async def update_config(request: Request, new_cfg: DeviceConfig):
+    check_authorized(request, supervisor.config)
     supervisor.config = new_cfg
     save_config(new_cfg)
     supervisor.add_log("Configuration updated via Web UI.", "INFO")
@@ -86,8 +89,9 @@ async def get_status():
     return supervisor.latest_status
 
 @app.post("/api/device/sync")
-async def trigger_sync():
+async def trigger_sync(request: Request):
     """Triggers an out-of-band capture and push."""
+    check_authorized(request, supervisor.config)
     asyncio.create_task(_run_single_sync())
     return {"status": "triggered"}
 
@@ -111,7 +115,8 @@ async def _run_single_sync():
         supervisor.add_log(f"Manual sync failed: {e}", "ERROR")
 
 @app.post("/api/device/reset")
-async def reset_device():
+async def reset_device(request: Request):
+    check_authorized(request, supervisor.config)
     state, model, dev = driver.detect_device(supervisor.config.model)
     if state == "STORAGE_MODE" and dev:
         driver.switch_storage_to_display(dev)
@@ -125,7 +130,8 @@ async def reset_device():
     return {"status": "no_device"}
 
 @app.post("/api/device/heal-switch")
-async def heal_switch():
+async def heal_switch(request: Request):
+    check_authorized(request, supervisor.config)
     state, model, dev = driver.detect_device(supervisor.config.model)
     if dev:
         driver.switch_storage_to_display(dev)
@@ -134,8 +140,9 @@ async def heal_switch():
     return {"status": "no_device_found"}
 
 @app.post("/api/mock/fault/{fault_type}")
-async def inject_mock_fault(fault_type: str):
+async def inject_mock_fault(request: Request, fault_type: str):
     """Fault injection endpoints for mock testing."""
+    check_authorized(request, supervisor.config)
     if not getattr(driver, "is_mock", False):
         raise HTTPException(status_code=400, detail="Not running in mock mode")
 
