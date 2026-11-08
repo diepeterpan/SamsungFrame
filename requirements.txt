@@ -1,0 +1,7 @@
+fastapi>=0.115.0
+uvicorn>=0.30.0
+websockets>=13.0
+pyusb>=1.2.1
+pillow>=10.4.0
+playwright>=1.47.0
+pydantic>=2.8.0

@@ -1,0 +1,19 @@
+services:
+  samsungframe:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: samsungframe
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - FRAME_MOCK=${FRAME_MOCK:-}
+      - FRAME_CONFIG_PATH=/app/config.json
+    volumes:
+      # Persistent configuration file
+      - ../config.json:/app/config.json
+      # USB device bus passthrough for physical Samsung Photo Frame access
+      - /dev/bus/usb:/dev/bus/usb
+    # Required for raw USB bulk and control endpoint transfers
+    privileged: true

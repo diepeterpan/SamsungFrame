@@ -43,3 +43,4 @@ echo " Setup complete! To run the service manually:"
 echo "   python3 -m uvicorn service.main:app --host 0.0.0.0 --port 8080"
 echo " Open Web UI at: http://localhost:8080"
 echo "=========================================================="
+

@@ -130,3 +130,4 @@ class MockSamsungFrameDriver:
     def trigger_stall_simulation(self):
         logger.info("[MOCK] Fault injection: enabling endpoint stall")
         self.simulate_stall = True
+
