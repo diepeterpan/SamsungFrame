@@ -57,11 +57,26 @@ class SamsungFrameDriver:
         if preferred_model in SUPPORTED_MODELS:
             models_to_check = [(preferred_model, SUPPORTED_MODELS[preferred_model])]
 
+        # Use a fresh libusb backend context if needed to force-refresh dynamic USB node additions
+        backend = None
+        try:
+            import usb.backend.libusb1
+            default_b = usb.backend.libusb1.get_backend()
+            if default_b and hasattr(default_b, "lib"):
+                backend = usb.backend.libusb1._LibUSB(default_b.lib)
+        except Exception:
+            backend = None
+
         for model_name, info in models_to_check:
             storage_pid, display_pid = info["pids"]
             
             # Check for Mini Display Mode first
-            dev_display = usb.core.find(idVendor=VENDOR_ID, idProduct=display_pid)
+            try:
+                dev_display = usb.core.find(idVendor=VENDOR_ID, idProduct=display_pid, backend=backend) if backend else usb.core.find(idVendor=VENDOR_ID, idProduct=display_pid)
+            except Exception as e:
+                logger.debug(f"Transient display probe error: {e}")
+                dev_display = None
+
             if dev_display:
                 self.current_model = model_name
                 self.active_resolution = info["resolution"]
@@ -70,7 +85,12 @@ class SamsungFrameDriver:
                 return "DISPLAY_MODE", model_name, dev_display
 
             # Check for Mass Storage Mode
-            dev_storage = usb.core.find(idVendor=VENDOR_ID, idProduct=storage_pid)
+            try:
+                dev_storage = usb.core.find(idVendor=VENDOR_ID, idProduct=storage_pid, backend=backend) if backend else usb.core.find(idVendor=VENDOR_ID, idProduct=storage_pid)
+            except Exception as e:
+                logger.debug(f"Transient storage probe error: {e}")
+                dev_storage = None
+
             if dev_storage:
                 self.current_model = model_name
                 self.active_resolution = info["resolution"]

@@ -14,8 +14,10 @@ services:
     volumes:
       # Persistent configuration file
       - ../config.json:/app/config.json
-      # USB device bus passthrough for physical Samsung Photo Frame access with rslave mount propagation
-      - /dev/bus/usb:/dev/bus/usb:rslave
+      # Full host /dev passthrough for live USB hotplug & re-enumeration
+      - /dev:/dev
+      # Live udev hardware database access for libusb hotplug event detection
+      - /run/udev:/run/udev:ro
     # Required for raw USB bulk and control endpoint transfers
     privileged: true
 
