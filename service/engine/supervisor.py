@@ -97,6 +97,7 @@ class SupervisorEngine:
                 resolution = self.driver.active_resolution
 
                 self.latest_status = {
+                    "is_mock": getattr(self.driver, "is_mock", False),
                     "state": state,
                     "model": model or "Unknown",
                     "resolution": f"{resolution[0]}x{resolution[1]}",

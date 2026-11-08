@@ -80,6 +80,9 @@
           <span class="w-2.5 h-2.5 rounded-full bg-gray-400" id="connDot"></span>
           <span id="connText">CONNECTING...</span>
         </div>
+        <div id="mockBadge" class="hidden flex items-center space-x-1.5 text-[10px] font-bold px-2 py-1 sharp-box border border-purple-300 bg-purple-50 text-purple-700 tracking-wider">
+          <span>SIMULATED HARDWARE</span>
+        </div>
         <button onclick="triggerImmediateRender()" class="btn-samsung-primary text-xs px-4 py-2 uppercase tracking-wider">
           Sync Now
         </button>
@@ -124,6 +127,22 @@
           <div class="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
             <h2 class="font-samsung text-xs font-bold uppercase tracking-widest text-[#002F6C]">Hardware Status</h2>
             <span id="badgeDeviceState" class="text-[11px] font-bold px-2.5 py-1 sharp-box uppercase tracking-wider bg-gray-100 text-gray-600">DISCONNECTED</span>
+          </div>
+
+          <!-- Mock Simulation Toolbar (Visible only when in mock mode) -->
+          <div id="mockControls" class="hidden mb-4 p-3 bg-purple-50 border border-purple-200 sharp-box">
+            <div class="text-[10px] font-bold uppercase tracking-wider text-purple-900 mb-2">Simulate Hardware Faults (Testing)</div>
+            <div class="grid grid-cols-3 gap-2">
+              <button onclick="injectFault('storage')" class="bg-white border border-purple-300 text-purple-800 text-[10px] font-semibold py-1 hover:bg-purple-100">
+                Storage Mode
+              </button>
+              <button onclick="injectFault('disconnect')" class="bg-white border border-purple-300 text-purple-800 text-[10px] font-semibold py-1 hover:bg-purple-100">
+                Unplug USB
+              </button>
+              <button onclick="injectFault('stall')" class="bg-white border border-purple-300 text-purple-800 text-[10px] font-semibold py-1 hover:bg-purple-100">
+                Bulk Stall
+              </button>
+            </div>
           </div>
 
           <dl class="grid grid-cols-2 gap-y-3 text-xs">
@@ -315,6 +334,16 @@
     function updateStatusUI(data) {
       const stateBadge = document.getElementById('badgeDeviceState');
       const recovery = document.getElementById('recoveryBanner');
+      const mockBadge = document.getElementById('mockBadge');
+      const mockControls = document.getElementById('mockControls');
+
+      if (data.is_mock) {
+        mockBadge.classList.remove('hidden');
+        mockControls.classList.remove('hidden');
+      } else {
+        mockBadge.classList.add('hidden');
+        mockControls.classList.add('hidden');
+      }
       
       document.getElementById('statModel').innerText = data.model;
       document.getElementById('statResolution').innerText = data.resolution;
@@ -422,6 +451,11 @@
     async function requestHealingSwitch() {
       appendLog('Manual trigger: Storage to Display Mode...', 'INFO');
       await fetch('/api/device/heal-switch', { method: 'POST' });
+    }
+
+    async function injectFault(faultType) {
+      appendLog(`Triggering mock fault injection: ${faultType}...`, 'WARNING');
+      await fetch(`/api/mock/fault/${faultType}`, { method: 'POST' });
     }
 
     // Initialize

@@ -8,13 +8,29 @@ from fastapi.staticfiles import StaticFiles
 
 from service.config.settings import load_config, save_config, DeviceConfig
 from service.driver.usb_driver import SamsungFrameDriver
+from service.driver.mock_driver import MockSamsungFrameDriver
 from service.engine.capture_engine import WebCaptureEngine
 from service.engine.supervisor import SupervisorEngine
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("frame.main")
 
-driver = SamsungFrameDriver()
+# Determine whether to run in mock or physical mode
+USE_MOCK = os.getenv("FRAME_MOCK", "").lower() in ("1", "true", "yes")
+
+if USE_MOCK:
+    logger.info("Initializing in MOCK SIMULATOR mode.")
+    driver = MockSamsungFrameDriver(initial_state="STORAGE_MODE")
+else:
+    # Attempt physical detection; if no physical frame found and auto fallback is desired
+    temp_driver = SamsungFrameDriver()
+    state, _, _ = temp_driver.detect_device()
+    if state == "DISCONNECTED" and os.getenv("FRAME_FORCE_PHYSICAL", "").lower() not in ("1", "true"):
+        logger.info("No physical Samsung Frame found on USB. Automatically falling back to MOCK SIMULATOR mode.")
+        driver = MockSamsungFrameDriver(initial_state="STORAGE_MODE")
+    else:
+        logger.info("Using physical PyUSB hardware driver.")
+        driver = temp_driver
 capturer = WebCaptureEngine()
 config = load_config()
 supervisor = SupervisorEngine(driver, capturer, config)
@@ -96,6 +112,29 @@ async def heal_switch():
         supervisor.add_log("Manual force switch command sent to USB device.", "INFO")
         return {"status": "switched"}
     return {"status": "no_device_found"}
+
+@app.post("/api/mock/fault/{fault_type}")
+async def inject_mock_fault(fault_type: str):
+    """Fault injection endpoints for mock testing."""
+    if not getattr(driver, "is_mock", False):
+        raise HTTPException(status_code=400, detail="Not running in mock mode")
+
+    if fault_type == "storage":
+        driver.set_mock_state("STORAGE_MODE")
+        supervisor.add_log("[MOCK FAULT] Device forced to STORAGE_MODE.", "WARNING")
+    elif fault_type == "disconnect":
+        driver.set_mock_state("DISCONNECTED")
+        supervisor.add_log("[MOCK FAULT] Device forced to DISCONNECTED.", "WARNING")
+    elif fault_type == "display":
+        driver.set_mock_state("DISPLAY_MODE")
+        supervisor.add_log("[MOCK FAULT] Device restored to DISPLAY_MODE.", "SUCCESS")
+    elif fault_type == "stall":
+        driver.trigger_stall_simulation()
+        supervisor.add_log("[MOCK FAULT] Injected endpoint bulk stall.", "ERROR")
+    else:
+        raise HTTPException(status_code=400, detail="Unknown fault type")
+    
+    return {"status": "injected", "fault": fault_type}
 
 @app.get("/api/preview/latest.jpg")
 async def get_latest_preview():
