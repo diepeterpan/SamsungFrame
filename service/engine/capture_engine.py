@@ -53,6 +53,19 @@ class WebCaptureEngine:
                 # Navigate and wait until network is mostly idle
                 await page.goto(url, wait_until="networkidle", timeout=20000)
                 await asyncio.sleep(0.5) # Brief stabilization for CSS animations
+
+                # If scaling_mode is fit_width and the page content width exceeds the initial target viewport,
+                # expand the viewport width to the full content width so that content is not clipped by Chromium.
+                if scaling_mode == "fit_width":
+                    content_w = await page.evaluate(
+                        "() => Math.max(document.body.scrollWidth, document.documentElement.scrollWidth, document.body.offsetWidth, document.documentElement.offsetWidth)"
+                    )
+                    if content_w and content_w > target_w:
+                        ratio = target_w / content_w
+                        content_h = max(target_h, int(target_h / ratio))
+                        await page.set_viewport_size({"width": int(content_w), "height": int(content_h)})
+                        await asyncio.sleep(0.2)
+
                 screenshot_bytes = await page.screenshot(type="png", full_page=False)
             finally:
                 await page.close()
@@ -71,6 +84,19 @@ class WebCaptureEngine:
 
         if mode == "stretch":
             return img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+
+        if mode == "fit_width":
+            ratio = target_w / orig_w
+            new_w = target_w
+            new_h = int(orig_h * ratio)
+            resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+            if new_h <= target_h:
+                canvas = Image.new("RGB", (target_w, target_h), (0, 0, 0))
+                canvas.paste(resized, (0, 0))
+                return canvas
+            else:
+                return resized.crop((0, 0, target_w, target_h))
 
         if mode == "crop_center":
             # Scale to cover then crop

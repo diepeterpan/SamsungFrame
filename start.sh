@@ -99,10 +99,37 @@ if [ "$RUN_MODE" = "docker" ]; then
         echo "Mode: DOCKER CONTAINER [AUTO / PHYSICAL USB PASSTHROUGH]"
     fi
 
+    # Check if container is already running
+    RUNNING_CONTAINERS=$(docker compose -f docker/docker-compose.yml ps -q --status running 2>/dev/null || true)
+    BUILD_FLAG=""
+
+    if [ -n "$RUNNING_CONTAINERS" ]; then
+        echo ""
+        echo "Notice: samsungframe container is currently RUNNING."
+        echo "  [c] Continue with running container (attach / restart)"
+        echo "  [r] Rebuild container image before continuing"
+        echo "  [q] Quit / Abort"
+        read -r -p "Select option [c/r/q] (default: c): " USER_CHOICE
+        case "${USER_CHOICE,,}" in
+            r|rebuild)
+                echo "Rebuilding container..."
+                docker compose -f docker/docker-compose.yml down
+                BUILD_FLAG="--build"
+                ;;
+            q|quit|exit)
+                echo "Aborted by user."
+                exit 0
+                ;;
+            *)
+                echo "Continuing with existing container..."
+                ;;
+        esac
+    fi
+
     echo "Launching container with docker compose..."
     echo "Web Dashboard: http://localhost:${PORT}"
     echo "----------------------------------------------------------"
-    exec docker compose -f docker/docker-compose.yml up
+    exec docker compose -f docker/docker-compose.yml up $BUILD_FLAG
 fi
 
 # ----------------------------------------------------------
