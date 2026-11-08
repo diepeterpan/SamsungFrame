@@ -5,3 +5,4 @@ pyusb>=1.2.1
 pillow>=10.4.0
 playwright>=1.47.0
 pydantic>=2.8.0
+

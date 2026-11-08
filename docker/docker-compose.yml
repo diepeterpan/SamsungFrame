@@ -17,3 +17,4 @@ services:
       - /dev/bus/usb:/dev/bus/usb
     # Required for raw USB bulk and control endpoint transfers
     privileged: true
+
